@@ -138,18 +138,8 @@ const updateProfile = async (req, res) => {
 
     const token = authHeader.split(' ')[1];
 
-    // Create a user-scoped Supabase client using the provided token
-    // This allows us to securely call updateUser on behalf of the user
     const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder.supabase.co';
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'placeholder';
-    
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    });
 
     const updateData = {};
     if (email) updateData.email = email;
@@ -165,26 +155,36 @@ const updateProfile = async (req, res) => {
     
     // Update user metadata (name, address)
     if (name || address) {
-      // Fetch existing metadata to merge it properly if needed, but updating 'data' merges by default
       updateData.data = {};
       if (name) updateData.data.name = name;
       if (address) updateData.data.address = address;
     }
 
-    // Call Supabase Auth to update user
-    const { data, error } = await userClient.auth.updateUser(updateData);
+    // Call Supabase Auth REST API directly to bypass "Auth session missing" error
+    // when using the JS SDK without an established session.
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'apikey': supabaseAnonKey
+      },
+      body: JSON.stringify(updateData)
+    });
 
-    if (error) {
+    const data = await response.json();
+
+    if (!response.ok) {
       return res.status(400).json({
         success: false,
-        message: error.message,
+        message: data.msg || data.message || 'Gagal memperbarui profil.',
       });
     }
 
     return res.status(200).json({
       success: true,
       message: 'Profil berhasil diperbarui!',
-      user: data.user,
+      user: data,
     });
   } catch (error) {
     console.error('Error update profile:', error);
