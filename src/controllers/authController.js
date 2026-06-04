@@ -1,4 +1,5 @@
 const supabase = require('../config/supabase');
+const { createClient } = require('@supabase/supabase-js');
 
 /**
  * Controller untuk Registrasi User Baru
@@ -120,8 +121,84 @@ const getProfile = async (req, res) => {
   }
 };
 
+/**
+ * Controller untuk mengupdate data profil & password user
+ */
+const updateProfile = async (req, res) => {
+  try {
+    const { email, password, name, address } = req.body;
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token tidak valid atau tidak ditemukan.',
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    // Create a user-scoped Supabase client using the provided token
+    // This allows us to securely call updateUser on behalf of the user
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder.supabase.co';
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'placeholder';
+    
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    });
+
+    const updateData = {};
+    if (email) updateData.email = email;
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password harus minimal 6 karakter!',
+        });
+      }
+      updateData.password = password;
+    }
+    
+    // Update user metadata (name, address)
+    if (name || address) {
+      // Fetch existing metadata to merge it properly if needed, but updating 'data' merges by default
+      updateData.data = {};
+      if (name) updateData.data.name = name;
+      if (address) updateData.data.address = address;
+    }
+
+    // Call Supabase Auth to update user
+    const { data, error } = await userClient.auth.updateUser(updateData);
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profil berhasil diperbarui!',
+      user: data.user,
+    });
+  } catch (error) {
+    console.error('Error update profile:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan pada server saat mengupdate profil.',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getProfile,
+  updateProfile,
 };
